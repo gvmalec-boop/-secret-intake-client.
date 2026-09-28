@@ -4,7 +4,7 @@
 <details><summary>Технические данные</summary><label>Public intake manifest<textarea id=m rows=7></textarea></label></details>
 <label>Название записи<input id=n autocomplete="off" placeholder="Например: Pushover"></label><label>Логин / email<input id=l autocomplete="off"></label><label>Пароль / ключ<input id=s type=password autocomplete="off"></label><label>Дополнительные поля<textarea id=x rows=4 placeholder="PIN: ...&#10;API Key: ..."></textarea></label><button id=b>Зашифровать локально</button>
 <details><summary>Зашифрованный контейнер</summary><textarea id=o rows=10 readonly></textarea></details>
-<script>
+<script>\ndocument.addEventListener("DOMContentLoaded",()=>{document.querySelector("#m").value="{\"v\":1,\"purpose\":\"TEST_ONLY\",\"expires_at\":\"2026-09-28T22:30:00.000Z\",\"kid\":\"9FNkqFmQJcW8cWw5QrSKgmmsdkOkME8i0pry3mT2XHA\",\"publicKey\":{\"kty\":\"EC\",\"x\":\"E0NT04NXNWvONTkSAkMT-ijpdna4_BIUnCBlyp-tB8M\",\"y\":\"6KoRH-HUELwquM7qQYjYDqKoIA6K96vukQdfGIAGwIc\",\"crv\":\"P-256\"}}"});
 const te=new TextEncoder(),b64u=x=>{let s='';new Uint8Array(x).forEach(b=>s+=String.fromCharCode(b));return btoa(s).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')},u32=n=>new Uint8Array([n>>>24,n>>>16&255,n>>>8&255,n&255]);
 async function kdf(z,alg){let a=te.encode(alg),o=new Uint8Array(4+a.length+4+4+4);o.set(u32(a.length));o.set(a,4);o.set(u32(256),o.length-4);let x=new Uint8Array(4+z.byteLength+o.length);x.set(u32(1));x.set(new Uint8Array(z),4);x.set(o,4+z.byteLength);return crypto.subtle.digest('SHA-256',x)}
 async function kid(j){return b64u(await crypto.subtle.digest('SHA-256',te.encode(JSON.stringify({crv:j.crv,kty:j.kty,x:j.x,y:j.y}))))}
