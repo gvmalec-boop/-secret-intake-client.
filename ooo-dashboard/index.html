@@ -80,6 +80,25 @@ async function deferRecurring(id,iso){
 async function toggleRecurring(id,enabled){
   await action(enabled?"RECURRING_DISABLE":"RECURRING_ENABLE",{schedule_id:id});
 }
+async function editRecurringRule(id,kind,localTime,weekdays,priority){
+  var hhmm=String(localTime||"").slice(0,5);
+  var t=prompt("Время серии (ЧЧ:ММ):",hhmm||"10:00");
+  if(!t)return;
+  if(!/^([01]\\d|2[0-3]):[0-5]\\d$/.test(t)){toast("Неверное время");return;}
+  var days=null;
+  if(kind==="WEEKLY_DAYS"){
+    var current=Array.isArray(weekdays)?weekdays.join(","):"1";
+    var raw=prompt("Дни недели через запятую: 1=Пн ... 7=Вс",current);
+    if(raw===null)return;
+    days=raw.split(",").map(function(x){return Number(x.trim())}).filter(function(x){return Number.isInteger(x)});
+    if(!days.length||days.some(function(x){return x<1||x>7})){toast("Дни должны быть от 1 до 7");return;}
+    days=Array.from(new Set(days)).sort();
+  }
+  var p=prompt("Приоритет P0–P3:",priority||"P2")||"";
+  p=p.toUpperCase();
+  if(["P0","P1","P2","P3"].indexOf(p)<0){toast("Приоритет только P0–P3");return;}
+  await action("RECURRING_UPDATE_RULE",{schedule_id:id,local_time:t+":00",weekdays:days,priority:p});
+}
 async function load(){
  try{
   var r=await fetch("https://fqznrqxucpyqyxgfrvda.supabase.co/functions/v1/ooo-dashboard?json=1",{cache:"no-store"});
@@ -96,7 +115,8 @@ async function load(){
     var kind=x.schedule_kind==="DAILY"?"ежедневно":"по дням недели";
     var off=x.enabled?"":" disabled";
     var status=x.enabled?"включено":"выключено";
-    return '<div class="row'+off+'"><div class="schedule-main"><div class="schedule-title">'+esc(x.title||"Повторяющаяся задача")+'</div><div class="caption">'+esc(kind)+' · '+esc(status)+' · следующий: '+fmt(x.next_run_at)+'</div></div><div class="actions"><button class="mini" onclick="toggleRecurring(\''+esc(x.schedule_id)+'\','+(x.enabled?"true":"false")+')">'+(x.enabled?"Выключить":"Включить")+'</button>'+(x.enabled?'<button class="mini" onclick="deferRecurring(\''+esc(x.schedule_id)+'\',\''+esc(x.next_run_at)+'\')">Перенести следующий</button>':'')+'</div></div>';
+    var days=Array.isArray(x.weekdays)?x.weekdays:[];
+    return '<div class="row'+off+'"><div class="schedule-main"><div class="schedule-title">'+esc(x.title||"Повторяющаяся задача")+'</div><div class="caption">'+esc(kind)+' · '+esc(status)+' · '+esc(String(x.local_time||"").slice(0,5))+' · '+esc(x.priority||"P2")+' · следующий: '+fmt(x.next_run_at)+'</div></div><div class="actions"><button class="mini" onclick="toggleRecurring(\''+esc(x.schedule_id)+'\','+(x.enabled?"true":"false")+')">'+(x.enabled?"Выключить":"Включить")+'</button><button class="mini" onclick="editRecurringRule(\''+esc(x.schedule_id)+'\',\''+esc(x.schedule_kind)+'\',\''+esc(x.local_time||"")+'\','+JSON.stringify(days)+',\''+esc(x.priority||"P2")+'\')">Изменить серию</button>'+(x.enabled?'<button class="mini" onclick="deferRecurring(\''+esc(x.schedule_id)+'\',\''+esc(x.next_run_at)+'\')">Перенести следующий</button>':'')+'</div></div>';
   })).join("");
   if(!planned)planned='<div class="row"><span>Запланированных задач нет</span></div>';
   var html='';
