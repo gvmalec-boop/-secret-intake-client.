@@ -8,7 +8,7 @@
 :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Arial,sans-serif;color-scheme:dark;--bg:#0d1117;--panel:#161b22;--line:#30363d;--text:#e6edf3;--muted:#8b949e;--good:#3fb950;--warn:#d29922;--bad:#f85149;--info:#58a6ff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);min-height:100vh}.wrap{max-width:980px;margin:0 auto;padding:20px 16px 36px}
 header{display:flex;gap:14px;align-items:flex-start;justify-content:space-between;margin-bottom:18px}h1{font-size:24px;margin:0 0 4px}.sub,.caption{color:var(--muted);font-size:13px}
-button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px}
+button{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:9px 12px;font-size:14px}.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.mini{padding:6px 9px;font-size:12px}.disabled{opacity:.55}.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#21262d;border:1px solid var(--line);padding:10px 14px;border-radius:10px;font-size:13px;z-index:20;max-width:90vw}.schedule-main{min-width:0;flex:1}.schedule-title{font-weight:600;word-break:break-word}
 .banner{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;gap:10px;align-items:center}.banner strong{font-size:17px}
 .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:8px}.good{background:var(--good)}.warn{background:var(--warn)}.bad{background:var(--bad)}.info{background:var(--info)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px}.card h2{font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600}
@@ -22,7 +22,7 @@ footer{margin-top:16px;color:var(--muted);font-size:12px;text-align:center}@medi
 <div class="wrap">
 <header><div><h1>ООО «ООО»</h1><div class="sub">Операционная панель состояния</div></div><button id="refresh">Обновить</button></header>
 <div id="app"><div class="banner"><strong>Загрузка…</strong></div></div>
-<footer>Автообновление каждые 10 секунд · безопасная сводка без содержимого писем и документов</footer>
+<footer>Автообновление каждые 10 секунд · управление расписаниями защищено PIN · без содержимого писем и документов</footer>
 </div>
 <script>
 var RU={HEALTHY:"Норма",ATTENTION:"Требует внимания",DEGRADED_LOCAL:"Локальный контур недоступен",RUNNING:"В работе",WAITING_USER:"Ждёт Василия",WAITING_LOCAL_DEPENDENCY:"Ждёт компьютер",FAILED:"Ошибка",UNCERTAIN:"Нужна сверка",DONE:"Завершено"};
@@ -37,6 +37,49 @@ function cls(code){
 function agentCard(title,x,extra){
  return '<div class="card"><h2>'+esc(title)+'</h2><div class="caption">Статус</div><div class="big"><span class="dot '+cls(x.code)+'"></span>'+esc(x.label)+'</div><div class="reason">'+esc(x.detail||"")+'</div><div class="meta">'+extra+'</div></div>';
 }
+const ACTION_URL="https://fqznrqxucpyqyxgfrvda.supabase.co/functions/v1/ooo-dashboard-action";
+function toast(msg){
+  var old=document.getElementById("toast"); if(old) old.remove();
+  var x=document.createElement("div"); x.id="toast"; x.className="toast"; x.textContent=msg;
+  document.body.appendChild(x); setTimeout(function(){x.remove()},2600);
+}
+function getPin(){
+  var p=localStorage.getItem("oooDashboardPin")||"";
+  if(/^\d{8}$/.test(p)) return p;
+  p=prompt("Введите 8-значный PIN управления расписаниями:")||"";
+  if(!/^\d{8}$/.test(p)){toast("Нужен 8-значный PIN");return "";}
+  localStorage.setItem("oooDashboardPin",p); return p;
+}
+async function action(name,payload){
+  var pin=getPin(); if(!pin) return false;
+  var r=await fetch(ACTION_URL,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(Object.assign({pin:pin,action:name},payload||{}))});
+  var d={}; try{d=await r.json()}catch{}
+  if(r.status===401){localStorage.removeItem("oooDashboardPin");toast("Неверный PIN. Введите его заново.");return false;}
+  if(!r.ok){toast("Команда не выполнена: "+(d.error||("HTTP "+r.status)));return false;}
+  toast("Готово"); await load(); return true;
+}
+function localInputDefault(iso){
+  var d=iso?new Date(iso):new Date(Date.now()+3600000);
+  var z=new Date(d.getTime()-d.getTimezoneOffset()*60000);
+  return z.toISOString().slice(0,16);
+}
+async function rescheduleOne(id,iso){
+  var v=prompt("Новая дата и время (ГГГГ-ММ-ДДTЧЧ:ММ):",localInputDefault(iso));
+  if(!v)return;
+  var d=new Date(v);
+  if(isNaN(d.getTime())){toast("Неверная дата");return;}
+  await action("ONE_TIME_RESCHEDULE",{task_id:id,new_time:d.toISOString()});
+}
+async function deferRecurring(id,iso){
+  var v=prompt("Когда выполнить ближайший запуск?",localInputDefault(iso));
+  if(!v)return;
+  var d=new Date(v);
+  if(isNaN(d.getTime())){toast("Неверная дата");return;}
+  await action("RECURRING_DEFER_NEXT",{schedule_id:id,new_time:d.toISOString()});
+}
+async function toggleRecurring(id,enabled){
+  await action(enabled?"RECURRING_DISABLE":"RECURRING_ENABLE",{schedule_id:id});
+}
 async function load(){
  try{
   var r=await fetch("https://fqznrqxucpyqyxgfrvda.supabase.co/functions/v1/ooo-dashboard?json=1",{cache:"no-store"});
@@ -48,10 +91,12 @@ async function load(){
   if(!recent)recent='<div class="row"><span>Событий пока нет</span></div>';
   var s=d.schedule||{one_time:[],recurring:[]};
   var planned=(s.one_time||[]).map(function(x){
-    return '<div class="row"><span>'+esc(x.title||"Разовая задача")+' <span class="caption">· разово</span></span><span class="state">'+fmt(x.scheduled_for)+'</span></div>';
+    return '<div class="row"><div class="schedule-main"><div class="schedule-title">'+esc(x.title||"Разовая задача")+'</div><div class="caption">разово · '+fmt(x.scheduled_for)+'</div></div><div class="actions"><button class="mini" onclick="rescheduleOne(\''+esc(x.task_id)+'\',\''+esc(x.scheduled_for)+'\')">Перенести</button></div></div>';
   }).concat((s.recurring||[]).map(function(x){
     var kind=x.schedule_kind==="DAILY"?"ежедневно":"по дням недели";
-    return '<div class="row"><span>'+esc(x.title||"Повторяющаяся задача")+' <span class="caption">· '+esc(kind)+'</span></span><span class="state">'+fmt(x.next_run_at)+'</span></div>';
+    var off=x.enabled?"":" disabled";
+    var status=x.enabled?"включено":"выключено";
+    return '<div class="row'+off+'"><div class="schedule-main"><div class="schedule-title">'+esc(x.title||"Повторяющаяся задача")+'</div><div class="caption">'+esc(kind)+' · '+esc(status)+' · следующий: '+fmt(x.next_run_at)+'</div></div><div class="actions"><button class="mini" onclick="toggleRecurring(\''+esc(x.schedule_id)+'\','+(x.enabled?"true":"false")+')">'+(x.enabled?"Выключить":"Включить")+'</button>'+(x.enabled?'<button class="mini" onclick="deferRecurring(\''+esc(x.schedule_id)+'\',\''+esc(x.next_run_at)+'\')">Перенести следующий</button>':'')+'</div></div>';
   })).join("");
   if(!planned)planned='<div class="row"><span>Запланированных задач нет</span></div>';
   var html='';
